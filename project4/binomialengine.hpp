@@ -35,6 +35,9 @@
 #include <ql/processes/blackscholesprocess.hpp>
 #include <ql/termstructures/yield/flatforward.hpp>
 #include <ql/termstructures/volatility/equityfx/blackconstantvol.hpp>
+#include <iostream>
+#include <iomanip>
+#include <ql/pricingengines/blackscholescalculator.hpp>
 
 namespace QuantLib {
 
@@ -69,11 +72,12 @@ namespace QuantLib {
     };
 
 
+
     // template definitions
 
     template <class T>
     void BinomialVanillaEngine_2<T>::calculate() const {
-
+		
         DayCounter rfdc  = process_->riskFreeRate()->dayCounter();
         DayCounter divdc = process_->dividendYield()->dayCounter();
         DayCounter voldc = process_->blackVolatility()->dayCounter();
@@ -116,13 +120,32 @@ namespace QuantLib {
 
         boost::shared_ptr<T> tree(new T(bs, maturity, timeSteps_,
                                         payoff->strike()));
-
-        boost::shared_ptr<BlackScholesLattice<T> > lattice(
-            new BlackScholesLattice<T>(tree, r, maturity, timeSteps_));
-
+        
+		
+		boost::shared_ptr<BlackScholesLattice<T> > lattice(new BlackScholesLattice <T> (tree, r, maturity, timeSteps_));
+		
         DiscretizedVanillaOption option(arguments_, *process_, grid);
-
+  
         option.initialize(lattice, maturity);
+
+        option.rollback(grid[timeSteps_-1]);
+
+        Rate riskFreeRate_ = r;
+        Time dt_ = maturity/timeSteps_;
+        DiscountFactor discount_ = std::exp(-riskFreeRate_*(dt_));
+        
+        Real volatility_ = v; 
+        Real strike_ = payoff->strike();  
+        Rate dividendYield_ = q;    
+ 
+		Real vol =  volatility_ *std::sqrt(dt_); 
+		DiscountFactor growth = std::exp(-(dividendYield_)*dt_);
+		for (int i =0 ; i<Integer(lattice->size(timeSteps_ -1)); i++) {	  
+		   BlackScholesCalculator bsCalculator(payoff->optionType(), strike_, lattice->underlying(timeSteps_ -1 , i), growth, vol, discount_) ; 
+		   option.values()[i] = bsCalculator.value() ; 
+
+		}
+        option.adjustValues();
 
         // Partial derivatives calculated from various points in the
         // binomial tree 
